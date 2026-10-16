@@ -1,0 +1,8 @@
+{
+  "appId": "com.facultydesk.app",
+  "appName": "FacultyDesk",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

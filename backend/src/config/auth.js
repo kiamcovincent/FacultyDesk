@@ -12,10 +12,12 @@ function getJwtSecret() {
 }
 
 function getAuthCookieOptions() {
+  const sameSite = process.env.AUTH_COOKIE_SAME_SITE || 'lax';
+
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+    sameSite,
     path: '/',
     maxAge: SESSION_DURATION_MS,
   };
