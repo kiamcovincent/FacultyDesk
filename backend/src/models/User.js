@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
+    supabaseUserId: {
+      type: String,
+      select: false,
+    },
     role: {
       type: String,
       enum: ['teacher', 'admin'],
@@ -45,6 +49,11 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+userSchema.index(
+  { supabaseUserId: 1 },
+  { unique: true, sparse: true, name: 'unique_supabase_user_id' }
+);
+
 userSchema.methods.comparePassword = function comparePassword(password) {
   return bcrypt.compare(password, this.passwordHash);
 };
@@ -52,6 +61,7 @@ userSchema.methods.comparePassword = function comparePassword(password) {
 userSchema.set('toJSON', {
   transform(document, result) {
     delete result.passwordHash;
+    delete result.supabaseUserId;
     delete result.__v;
     return result;
   },

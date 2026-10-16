@@ -269,6 +269,11 @@
 .field input:focus { border-color: var(--primary-blue); outline: 0; box-shadow: 0 0 0 3px rgba(143, 185, 222, 0.2); }
 .form-submit { width: 100%; margin-top: 5px; }
 .form-alert { margin: 0; padding: 10px 12px; border: 1px solid rgba(217, 130, 130, 0.35); border-radius: 5px; color: #874343; background: rgba(217, 130, 130, 0.1); font-size: 12px; line-height: 1.5; }
+.registration-confirmation { display: grid; justify-items: start; gap: 14px; }
+.registration-confirmation__icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--deep-blue); background: rgba(143, 185, 222, 0.18); }
+.registration-confirmation h2 { margin: 0; }
+.registration-confirmation p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.registration-confirmation strong { color: var(--text); overflow-wrap: anywhere; }
 .auth-switch { margin: 22px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
 .auth-switch a, .text-action { color: var(--deep-blue); font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .auth-loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-size: 13px; }

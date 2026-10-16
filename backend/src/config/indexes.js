@@ -1,4 +1,12 @@
 const Schedule = require('../models/Schedule');
+const User = require('../models/User');
+
+async function ensureAuthIdentityIndex() {
+  await User.collection.createIndex(
+    { supabaseUserId: 1 },
+    { unique: true, sparse: true, name: 'unique_supabase_user_id' }
+  );
+}
 
 async function ensureScheduleIndexes() {
   const { db } = Schedule.collection.conn;
@@ -28,4 +36,4 @@ async function ensureScheduleIndexes() {
   );
 }
 
-module.exports = { ensureScheduleIndexes };
+module.exports = { ensureScheduleIndexes, ensureAuthIdentityIndex };

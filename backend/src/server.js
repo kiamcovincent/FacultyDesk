@@ -3,12 +3,13 @@ dotenv.config();
 
 const app = require('./app');
 const { connectDB } = require('./config/db');
-const { ensureScheduleIndexes } = require('./config/indexes');
+const { ensureAuthIdentityIndex, ensureScheduleIndexes } = require('./config/indexes');
 const port = process.env.PORT || 5000;
 
 async function startServer() {
   try {
     await connectDB();
+    await ensureAuthIdentityIndex();
     await ensureScheduleIndexes();
     console.log('Database indexes are ready');
   } catch (error) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../services/api.js';
+import { getRegistrationOutcome } from '../services/registrationResult.js';
 import { authContext as AuthContext } from './authContext.js';
 
 export function AuthProvider({ children }) {
@@ -37,9 +38,17 @@ export function AuthProvider({ children }) {
 
   const register = async (details) => {
     const data = await apiRequest('/auth/register', { method: 'POST', body: details });
-    setUser(data.user);
+    const outcome = getRegistrationOutcome(data, details.email);
+
+    if (outcome.pendingConfirmation) {
+      setUser(null);
+      setStatus('unauthenticated');
+      return outcome;
+    }
+
+    setUser(outcome.user);
     setStatus('authenticated');
-    return data.user;
+    return outcome;
   };
 
   const logout = async () => {
