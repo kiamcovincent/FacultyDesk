@@ -17,19 +17,26 @@ function createAuthenticatedClient(accessToken) {
   });
 }
 
-async function registerWithSupabase({ name, email, password }) {
+async function registerWithSupabase({ name, email, password, registrationIntentId }) {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
     options: {
       data: {
         name: name.trim(),
+        facultyDeskRegistrationIntentId: registrationIntentId,
       },
     },
   });
 
   if (error) {
     throw error;
+  }
+
+  if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
+    const duplicateError = new Error('An account with this email already exists.');
+    duplicateError.code = 'user_already_exists';
+    throw duplicateError;
   }
 
   return data;

@@ -8,6 +8,7 @@ export default function LoginPage() {
   const { user, status, login } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const requestedNext = new URLSearchParams(location.search).get('next');
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,10 @@ export default function LoginPage() {
     try {
       const signedInUser = await login(form);
       const fallback = signedInUser.role === 'admin' ? '/admin/dashboard' : '/dashboard';
-      navigate(location.state?.from?.pathname || fallback, { replace: true });
+      const safeNext = /^\/workflow\/(registration-confirmed|subject|schedule|students|attendance)$/.test(requestedNext || '')
+        ? requestedNext
+        : null;
+      navigate(location.state?.from?.pathname || safeNext || fallback, { replace: true });
     } catch (requestError) {
       setError(requestError.message);
     } finally {

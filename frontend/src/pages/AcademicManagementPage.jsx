@@ -106,7 +106,11 @@ export default function AcademicManagementPage() {
     try {
       await apiRequest('/schedules', {
         method: 'POST',
-        body: { ...scheduleForm, dayOfWeek: Number(scheduleForm.dayOfWeek) },
+        body: {
+          ...scheduleForm,
+          ...(isAdmin ? {} : { teacher: undefined }),
+          dayOfWeek: Number(scheduleForm.dayOfWeek),
+        },
       });
       setScheduleForm(initialSchedule);
       refreshAfterMutation('Schedule saved and subject assignment updated.');
@@ -183,26 +187,6 @@ export default function AcademicManagementPage() {
               <label className="field"><span>Code</span><input required minLength={2} maxLength={20} value={departmentForm.code} onChange={(event) => setDepartmentForm({ ...departmentForm, code: event.target.value.toUpperCase() })} /></label>
               <Button type="submit" loading={busy === 'department'}>Add department</Button>
             </form>
-
-            <form className="data-panel academic-form" onSubmit={createSubject}>
-              <div className="data-panel__heading"><div><h3>Add a subject</h3><p>Assign the subject to one or more teachers.</p></div><BookOpenCheck size={18} aria-hidden="true" /></div>
-              <label className="field"><span>Subject name</span><input required minLength={2} maxLength={120} value={subjectForm.name} onChange={(event) => setSubjectForm({ ...subjectForm, name: event.target.value })} /></label>
-              <label className="field"><span>Subject code</span><input required minLength={2} maxLength={20} value={subjectForm.code} onChange={(event) => setSubjectForm({ ...subjectForm, code: event.target.value.toUpperCase() })} /></label>
-              <label className="field"><span>Department</span><select required value={subjectForm.department} onChange={(event) => setSubjectForm({ ...subjectForm, department: event.target.value })}><option value="">Select department</option>{data.departments.map((department) => <option key={department._id} value={department._id}>{department.name}</option>)}</select></label>
-              <label className="field"><span>Assigned teachers</span><select multiple value={subjectForm.teachers} onChange={(event) => setSubjectForm({ ...subjectForm, teachers: [...event.target.selectedOptions].map((option) => option.value) })}>{data.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}</select></label>
-              <Button type="submit" loading={busy === 'subject'} disabled={!data.departments.length}>Save subject</Button>
-            </form>
-
-            <form className="data-panel academic-form" onSubmit={createSchedule}>
-              <div className="data-panel__heading"><div><h3>Add a schedule</h3><p>Conflicting teacher times are rejected.</p></div><CalendarDays size={18} aria-hidden="true" /></div>
-              <label className="field"><span>Teacher</span><select required value={scheduleForm.teacher} onChange={(event) => setScheduleForm({ ...scheduleForm, teacher: event.target.value })}><option value="">Select teacher</option>{data.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}</select></label>
-              <label className="field"><span>Subject</span><select required value={scheduleForm.subject} onChange={(event) => setScheduleForm({ ...scheduleForm, subject: event.target.value })}><option value="">Select subject</option>{data.subjects.filter((subject) => subject.active).map((subject) => <option key={subject._id} value={subject._id}>{subject.name} ({subject.code})</option>)}</select></label>
-              <label className="field"><span>Class</span><input required maxLength={100} value={scheduleForm.className} onChange={(event) => setScheduleForm({ ...scheduleForm, className: event.target.value })} /></label>
-              <label className="field"><span>Day</span><select value={scheduleForm.dayOfWeek} onChange={(event) => setScheduleForm({ ...scheduleForm, dayOfWeek: event.target.value })}>{weekdays.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>
-              <div className="academic-time-fields"><label className="field"><span>Starts</span><input type="time" required value={scheduleForm.startTime} onChange={(event) => setScheduleForm({ ...scheduleForm, startTime: event.target.value })} /></label><label className="field"><span>Ends</span><input type="time" required value={scheduleForm.endTime} onChange={(event) => setScheduleForm({ ...scheduleForm, endTime: event.target.value })} /></label></div>
-              <label className="field"><span>Time zone</span><input required value={scheduleForm.timeZone} onChange={(event) => setScheduleForm({ ...scheduleForm, timeZone: event.target.value })} /></label>
-              <Button type="submit" loading={busy === 'schedule'} disabled={!data.subjects.length || !data.teachers.length}>Save schedule</Button>
-            </form>
           </section>
 
           <section className="data-panel">
@@ -211,6 +195,28 @@ export default function AcademicManagementPage() {
           </section>
         </>
       )}
+
+      <section className="academic-forms">
+        <form className="data-panel academic-form" onSubmit={createSubject}>
+          <div className="data-panel__heading"><div><h3>Add a subject</h3><p>{isAdmin ? 'Assign the subject to one or more teachers.' : 'Create a subject for your teaching profile.'}</p></div><BookOpenCheck size={18} aria-hidden="true" /></div>
+          <label className="field"><span>Subject name</span><input required minLength={2} maxLength={120} value={subjectForm.name} onChange={(event) => setSubjectForm({ ...subjectForm, name: event.target.value })} /></label>
+          <label className="field"><span>Subject code</span><input required minLength={2} maxLength={20} value={subjectForm.code} onChange={(event) => setSubjectForm({ ...subjectForm, code: event.target.value.toUpperCase() })} /></label>
+          {isAdmin && <label className="field"><span>Department</span><select required value={subjectForm.department} onChange={(event) => setSubjectForm({ ...subjectForm, department: event.target.value })}><option value="">Select department</option>{data.departments.filter((department) => department.active).map((department) => <option key={department._id} value={department._id}>{department.name}</option>)}</select></label>}
+          {isAdmin && <label className="field"><span>Assigned teachers</span><select multiple value={subjectForm.teachers} onChange={(event) => setSubjectForm({ ...subjectForm, teachers: [...event.target.selectedOptions].map((option) => option.value) })}>{data.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}</select></label>}
+          <Button type="submit" loading={busy === 'subject'} disabled={isAdmin && !data.departments.some((department) => department.active)}>Save subject</Button>
+        </form>
+
+        <form className="data-panel academic-form" onSubmit={createSchedule}>
+          <div className="data-panel__heading"><div><h3>Add a schedule</h3><p>Conflicting teacher times are rejected.</p></div><CalendarDays size={18} aria-hidden="true" /></div>
+          {isAdmin && <label className="field"><span>Teacher</span><select required value={scheduleForm.teacher} onChange={(event) => setScheduleForm({ ...scheduleForm, teacher: event.target.value })}><option value="">Select teacher</option>{data.teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}</select></label>}
+          <label className="field"><span>Subject</span><select required value={scheduleForm.subject} onChange={(event) => setScheduleForm({ ...scheduleForm, subject: event.target.value })}><option value="">Select subject</option>{data.subjects.filter((subject) => subject.active).map((subject) => <option key={subject._id} value={subject._id}>{subject.name} ({subject.code})</option>)}</select></label>
+          <label className="field"><span>Class</span><input required maxLength={100} value={scheduleForm.className} onChange={(event) => setScheduleForm({ ...scheduleForm, className: event.target.value })} /></label>
+          <label className="field"><span>Day</span><select value={scheduleForm.dayOfWeek} onChange={(event) => setScheduleForm({ ...scheduleForm, dayOfWeek: event.target.value })}>{weekdays.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>
+          <div className="academic-time-fields"><label className="field"><span>Starts</span><input type="time" required value={scheduleForm.startTime} onChange={(event) => setScheduleForm({ ...scheduleForm, startTime: event.target.value })} /></label><label className="field"><span>Ends</span><input type="time" required value={scheduleForm.endTime} onChange={(event) => setScheduleForm({ ...scheduleForm, endTime: event.target.value })} /></label></div>
+          <label className="field"><span>Time zone</span><input required value={scheduleForm.timeZone} onChange={(event) => setScheduleForm({ ...scheduleForm, timeZone: event.target.value })} /></label>
+          <Button type="submit" loading={busy === 'schedule'} disabled={!data.subjects.some((subject) => subject.active) || (isAdmin && !data.teachers.length)}>Save schedule</Button>
+        </form>
+      </section>
 
       <section className="data-panel">
         <div className="data-panel__heading"><div><p className="eyebrow">CURRICULUM</p><h3>{isAdmin ? 'Subjects' : 'Assigned subjects'}</h3></div><span>{data.subjects.length} subjects</span></div>

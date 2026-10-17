@@ -4,6 +4,7 @@ const Department = require('../models/Department');
 const Schedule = require('../models/Schedule');
 const Subject = require('../models/Subject');
 const User = require('../models/User');
+const { getSubjectScheduleFilter, getTeacherIds, getTeacherScheduleId } = require('./academicOwnership');
 
 function httpError(statusCode, code, message) {
   const error = new Error(message);
@@ -108,12 +109,17 @@ async function assertTeachers(teacherIds = []) {
   return teachers.map((teacher) => teacher._id);
 }
 
-async function createSubject(input, actor, ipAddress) {
-  await assertDepartment(input.department);
-  const teachers = await assertTeachers(input.teachers || []);
+async function createSubject(input, user, ipAddress) {
+  if (input.department) await assertDepartment(input.department);
+  const teachers = await assertTeachers(getTeacherIds(user, input.teachers));
   try {
-    const subject = await Subject.create({ ...input, teachers });
-    await audit(actor, 'subject.created', 'Subject', subject, { name: subject.name, code: subject.code, department: subject.department, teachers }, ipAddress);
+    const subject = await Subject.create({
+      name: input.name,
+      code: input.code,
+      department: input.department || null,
+      teachers,
+    });
+    await audit(user._id, 'subject.created', 'Subject', subject, { name: subject.name, code: subject.code, department: subject.department, teachers }, ipAddress);
     return subject;
   } catch (error) {
     if (error.code === 11000) throw httpError(409, 'SUBJECT_CODE_EXISTS', 'That subject code already exists in this department.');
@@ -168,17 +174,28 @@ async function assertNoScheduleOverlap({ teacher, dayOfWeek, startTime, endTime 
   if (overlap) throw httpError(409, 'SCHEDULE_OVERLAP', 'This teacher already has a class scheduled during that time.');
 }
 
-async function createSchedule(input, actor, ipAddress) {
+async function createSchedule(input, user, ipAddress) {
+  const teacherId = getTeacherScheduleId(user, input.teacher);
+  const subjectFilter = getSubjectScheduleFilter(user, input.subject);
   const [teacher, subject] = await Promise.all([
-    User.findOne({ _id: input.teacher, role: 'teacher', status: 'active' }).select('_id'),
-    Subject.findOne({ _id: input.subject, active: true }),
+    User.findOne({ _id: teacherId, role: 'teacher', status: 'active' }).select('_id'),
+    Subject.findOne(subjectFilter),
   ]);
   if (!teacher) throw httpError(404, 'TEACHER_NOT_FOUND', 'Active teacher not found.');
-  if (!subject) throw httpError(404, 'SUBJECT_NOT_FOUND', 'Active subject not found.');
-  await assertNoScheduleOverlap(input);
-  const schedule = await Schedule.create(input);
+  if (!subject) throw httpError(404, 'SUBJECT_NOT_FOUND', 'Active subject assigned to this teacher not found.');
+  const scheduleData = {
+    teacher: teacher._id,
+    subject: subject._id,
+    className: input.className,
+    dayOfWeek: input.dayOfWeek,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+  };
+  await assertNoScheduleOverlap(scheduleData);
+  const schedule = await Schedule.create(scheduleData);
   await Subject.updateOne({ _id: subject._id }, { $addToSet: { teachers: teacher._id } });
-  await audit(actor, 'schedule.created', 'Schedule', schedule, input, ipAddress);
+  await audit(user._id, 'schedule.created', 'Schedule', schedule, scheduleData, ipAddress);
   return schedule;
 }
 

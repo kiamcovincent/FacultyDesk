@@ -10,6 +10,8 @@ router.use('/teachers', require('./teacherRoutes'));
 router.use('/departments', require('./departmentRoutes'));
 router.use('/subjects', require('./subjectRoutes'));
 router.use('/schedules', require('./scheduleRoutes'));
+router.use('/students', require('./studentRoutes'));
+router.use('/class-attendance', require('./classAttendanceRoutes'));
 router.use('/leave-requests', require('./leaveRequestRoutes'));
 router.use('/correction-requests', require('./correctionRequestRoutes'));
 router.use('/notifications', require('./notificationRoutes'));

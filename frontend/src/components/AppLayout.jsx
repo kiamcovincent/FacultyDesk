@@ -19,7 +19,7 @@ const teacherItems = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { to: '/attendance', label: 'Attendance', Icon: CalendarCheck2 },
   { to: '/history', label: 'My history', Icon: ClipboardList },
-  { to: '/classes', label: 'My classes', Icon: BookOpenCheck },
+  { to: '/workflow', label: 'Teaching setup', Icon: BookOpenCheck },
   { to: '/requests', label: 'Requests', Icon: FileCheck2 },
   { to: '/notifications', label: 'Notifications', Icon: Bell },
 ];

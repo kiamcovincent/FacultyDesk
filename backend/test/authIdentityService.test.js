@@ -103,6 +103,99 @@ test('new confirmed Supabase user receives a new Mongo ID with server-assigned t
   assert.notEqual(user.passwordHash, 'supabase-password');
 });
 
+test('confirmed Supabase identity consumes its opaque intent and stores the Mongo department reference', async () => {
+  const records = [];
+  const departmentId = 'mongo-department-object-id';
+  const intent = {
+    _id: 'a'.repeat(64),
+    email: 'teacher@example.test',
+    name: 'Intent Teacher',
+    department: departmentId,
+    status: 'pending',
+    async save() {},
+  };
+  const identityService = createAuthIdentityService({
+    UserModel: createUserModel(records),
+    RegistrationIntentModel: { findById: async (id) => id === intent._id ? intent : null },
+    DepartmentModel: { findOne: async (filter) => filter._id === departmentId && filter.active ? { _id: departmentId } : null },
+    bcryptModule: { hash: async (value, rounds) => `bcrypt:${rounds}:${value}` },
+    randomBytes: () => Buffer.from('random-only'),
+  });
+  const authUser = confirmedAuthUser({
+    user_metadata: {
+      name: 'Untrusted metadata name',
+      role: 'admin',
+      facultyDeskRegistrationIntentId: intent._id,
+    },
+  });
+
+  const user = await identityService.resolveAuthenticatedUser(authUser, 'supabase-password');
+
+  assert.equal(user.name, 'Intent Teacher');
+  assert.equal(user.role, 'teacher');
+  assert.equal(user.department, departmentId);
+  assert.equal(user.supabaseUserId, authUser.id);
+  assert.equal(intent.supabaseUserId, authUser.id);
+  assert.equal(intent.status, 'complete');
+});
+
+test('confirmed Supabase identity can complete a registration intent without a department', async () => {
+  const records = [];
+  const intent = {
+    _id: 'c'.repeat(64),
+    email: 'teacher@example.test',
+    name: 'Unassigned Teacher',
+    department: null,
+    status: 'pending',
+    supabaseUserId: 'supabase-user-uuid',
+    async save() {},
+  };
+  const identityService = createAuthIdentityService({
+    UserModel: createUserModel(records),
+    RegistrationIntentModel: { findById: async () => intent },
+    bcryptModule: { hash: async () => 'stored-random-hash' },
+    randomBytes: () => Buffer.from('random-only'),
+  });
+  const authUser = confirmedAuthUser({
+    user_metadata: { facultyDeskRegistrationIntentId: intent._id },
+  });
+
+  const user = await identityService.resolveAuthenticatedUser(authUser, 'supabase-password');
+
+  assert.equal(user.role, 'teacher');
+  assert.equal(user.department, null);
+  assert.equal(user.supabaseUserId, authUser.id);
+  assert.equal(intent.status, 'complete');
+});
+
+test('registration intent cannot be consumed by a different email or Supabase identity', async () => {
+  let createCalls = 0;
+  const identityService = createAuthIdentityService({
+    UserModel: {
+      findOne() { return { select: async () => null }; },
+      async create() { createCalls += 1; },
+    },
+    RegistrationIntentModel: {
+      findById: async () => ({
+        _id: 'b'.repeat(64),
+        email: 'teacher@example.test',
+        name: 'Intent Teacher',
+        department: 'mongo-department-object-id',
+        supabaseUserId: 'another-supabase-user',
+        status: 'pending',
+      }),
+    },
+  });
+  const authUser = confirmedAuthUser({
+    user_metadata: { facultyDeskRegistrationIntentId: 'b'.repeat(64) },
+  });
+
+  await assert.rejects(identityService.resolveAuthenticatedUser(authUser, 'password'), {
+    code: 'REGISTRATION_INTENT_INVALID',
+  });
+  assert.equal(createCalls, 0);
+});
+
 test('unconfirmed and inactive accounts cannot establish a Mongo identity link', async () => {
   const inactiveUser = {
     _id: 'inactive-mongo-id',
@@ -141,4 +234,12 @@ test('Mongo identity bridge uses a unique sparse field without replacing _id', (
     supabaseUserId: 'supabase-user-uuid',
   }).toJSON();
   assert.equal(serializedUser.supabaseUserId, undefined);
+});
+
+test('subjects retain optional department references for teacher-owned subjects', () => {
+  const Subject = require('../src/models/Subject');
+  const subject = new Subject({ name: 'Biology', code: 'BIO', teachers: ['507f1f77bcf86cd799439011'] });
+
+  assert.equal(subject.department, null);
+  assert.equal(Subject.schema.path('department').options.required, undefined);
 });

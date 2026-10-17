@@ -1,5 +1,6 @@
 const supabaseAuthService = require('../services/supabaseAuthService');
 const { createAuthIdentityService } = require('../services/authIdentityService');
+const { createRegistrationService } = require('../services/registrationService');
 const {
   AUTH_COOKIE_NAME,
   SESSION_DURATION_MS,
@@ -55,11 +56,37 @@ function isEmailUnconfirmed(error) {
 function createAuthController({
   authService = supabaseAuthService,
   identityService = createAuthIdentityService(),
+  registrationService = createRegistrationService(),
 } = {}) {
   async function register(req, res, next) {
+    let registrationIntent;
     try {
-      const { name, email, password } = req.body;
-      const data = await authService.registerWithSupabase({ name, email, password });
+      const { name, email, password, departmentId } = req.body;
+      registrationIntent = await registrationService.createRegistrationIntent({ name, email, departmentId });
+
+      let data;
+      try {
+        data = await authService.registerWithSupabase({
+          name,
+          email,
+          password,
+          registrationIntentId: registrationIntent._id,
+        });
+      } catch (error) {
+        if (isEmailAlreadyRegistered(error)) {
+          await registrationService.failRegistrationIntent(registrationIntent._id).catch(() => {});
+          return respondWithError(res, 409, 'EMAIL_IN_USE', 'An account with this email already exists.');
+        }
+        if (Number.isInteger(error.status) && error.status >= 400 && error.status < 500) {
+          await registrationService.failRegistrationIntent(registrationIntent._id).catch(() => {});
+        }
+        return next(error);
+      }
+
+      if (!data.user?.id) {
+        return respondWithError(res, 502, 'SUPABASE_REGISTRATION_INVALID', 'The authentication provider did not return a user.');
+      }
+      await registrationService.attachRegistrationIntent(registrationIntent._id, data.user.id);
       const confirmation = authService.getRegistrationConfirmation(data);
 
       if (confirmation.confirmationRequired) {
@@ -70,14 +97,25 @@ function createAuthController({
         });
       }
 
-      const user = await identityService.resolveAuthenticatedUser(data.user, password);
+      let user;
+      try {
+        user = await identityService.resolveAuthenticatedUser(data.user, password);
+      } catch (error) {
+        if (error.statusCode) {
+          return respondWithError(res, error.statusCode, error.code, error.message);
+        }
+
+        return respondWithError(
+          res,
+          503,
+          'PROFILE_LINK_FAILED',
+          'Your sign-in account was created, but your FacultyDesk profile could not be linked. Sign in again to retry.'
+        );
+      }
+
       setAuthCookie(res, data.session);
       return res.status(201).json({ message: 'Registration successful.', user: serializeUser(user) });
     } catch (error) {
-      if (isEmailAlreadyRegistered(error)) {
-        return respondWithError(res, 409, 'EMAIL_IN_USE', 'An account with this email already exists.');
-      }
-
       return next(error);
     }
   }

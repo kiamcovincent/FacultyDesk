@@ -1,4 +1,7 @@
 const Schedule = require('../models/Schedule');
+const Student = require('../models/Student');
+const ClassAttendance = require('../models/ClassAttendance');
+const RegistrationIntent = require('../models/RegistrationIntent');
 const User = require('../models/User');
 
 async function ensureAuthIdentityIndex() {
@@ -36,4 +39,27 @@ async function ensureScheduleIndexes() {
   );
 }
 
-module.exports = { ensureScheduleIndexes, ensureAuthIdentityIndex };
+async function ensureClassroomIndexes() {
+  await Student.collection.createIndex(
+    { studentNumber: 1 },
+    { unique: true, name: 'unique_student_number' }
+  );
+  await ClassAttendance.collection.createIndex(
+    { schedule: 1, date: 1 },
+    { unique: true, name: 'unique_schedule_attendance_date' }
+  );
+}
+
+async function ensureRegistrationIntentIndex() {
+  await RegistrationIntent.collection.createIndex(
+    { supabaseUserId: 1 },
+    { unique: true, sparse: true, name: 'unique_registration_supabase_user_id' }
+  );
+}
+
+module.exports = {
+  ensureScheduleIndexes,
+  ensureAuthIdentityIndex,
+  ensureClassroomIndexes,
+  ensureRegistrationIntentIndex,
+};

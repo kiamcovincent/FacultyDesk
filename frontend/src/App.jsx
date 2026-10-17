@@ -15,6 +15,7 @@ import ReportsPage from './pages/ReportsPage.jsx'
 import SystemSettingsPage from './pages/SystemSettingsPage.jsx'
 import RequestManagementPage from './pages/RequestManagementPage.jsx'
 import TeacherManagementPage from './pages/TeacherManagementPage.jsx'
+import TeacherWorkflowPage from './pages/TeacherWorkflowPage.jsx'
 import { RequireAuth, RequireRole } from './routes/ProtectedRoute.jsx'
 import './styles/app.css'
 
@@ -31,7 +32,14 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/attendance" element={<AttendancePage />} />
             <Route path="/history" element={<HistoryPage />} />
-            <Route path="/classes" element={<AcademicManagementPage />} />
+            <Route element={<RequireRole role="teacher" />}>
+              <Route path="/workflow" element={<Navigate to="/workflow/subject" replace />} />
+              <Route path="/workflow/registration-confirmed" element={<TeacherWorkflowPage step="registration-confirmed" />} />
+              <Route path="/workflow/subject" element={<TeacherWorkflowPage step="subject" />} />
+              <Route path="/workflow/schedule" element={<TeacherWorkflowPage step="schedule" />} />
+              <Route path="/workflow/students" element={<TeacherWorkflowPage step="students" />} />
+              <Route path="/workflow/attendance" element={<TeacherWorkflowPage step="attendance" />} />
+            </Route>
             <Route path="/requests" element={<RequestManagementPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route element={<RequireRole role="admin" />}>

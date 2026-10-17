@@ -22,8 +22,9 @@ router.get(
 
 router.post(
   '/',
-  authorize('admin'),
-  body('teacher').isMongoId(),
+  authorize('admin', 'teacher'),
+  body('teacher').if((_value, { req }) => req.user.role === 'admin').isMongoId(),
+  body('teacher').if((_value, { req }) => req.user.role === 'teacher').optional().isMongoId(),
   body('subject').isMongoId(),
   body('className').isString().trim().isLength({ min: 1, max: 100 }),
   body('dayOfWeek').isInt({ min: 0, max: 6 }).toInt(),

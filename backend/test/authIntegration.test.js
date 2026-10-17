@@ -6,12 +6,14 @@ const { test } = require('node:test');
 
 process.env.SUPABASE_URL ||= 'https://test-project.supabase.co';
 process.env.SUPABASE_PUBLISHABLE_KEY ||= 'test-publishable-key';
+process.env.NODE_ENV = 'test';
 
 const { createAuthController } = require('../src/controllers/authController');
 const { createAuthMiddleware } = require('../src/middleware/authMiddleware');
+const authRoutes = require('../src/routes/authRoutes');
 
-function createApp({ authService, identityService }) {
-  const controller = createAuthController({ authService, identityService });
+function createApp({ authService, identityService, registrationService }) {
+  const controller = createAuthController({ authService, identityService, registrationService });
   const middleware = createAuthMiddleware({ authService, identityService });
   const app = express();
 
@@ -54,9 +56,12 @@ function trustedMongoUser(overrides = {}) {
 }
 
 function createDependencies(overrides = {}) {
-  const calls = { identity: [], logout: [] };
+  const calls = { identity: [], logout: [], registration: [], signup: [] };
   const authService = {
-    registerWithSupabase: async () => ({ user: confirmedAuthUser(), session: null }),
+    registerWithSupabase: async (details) => {
+      calls.signup.push(details);
+      return { user: confirmedAuthUser(), session: null };
+    },
     getRegistrationConfirmation: (data) => ({
       confirmationRequired: !data.session,
       email: data.user.email,
@@ -84,8 +89,21 @@ function createDependencies(overrides = {}) {
     getMappedUser: async () => trustedMongoUser(),
     ...overrides.identityService,
   };
+  const registrationService = {
+    createRegistrationIntent: async (details) => {
+      calls.registration.push({ type: 'create', details });
+      return { _id: 'a'.repeat(64) };
+    },
+    attachRegistrationIntent: async (intentId, supabaseUserId) => {
+      calls.registration.push({ type: 'attach', intentId, supabaseUserId });
+    },
+    failRegistrationIntent: async (intentId) => {
+      calls.registration.push({ type: 'fail', intentId });
+    },
+    ...overrides.registrationService,
+  };
 
-  return { authService, identityService, calls };
+  return { authService, identityService, registrationService, calls };
 }
 
 test('registration with pending email confirmation returns no session cookie', async () => {
@@ -95,6 +113,7 @@ test('registration with pending email confirmation returns no session cookie', a
     name: 'New Teacher',
     email: 'new@example.test',
     password: 'test-password-only',
+    departmentId: '507f1f77bcf86cd799439011',
   });
 
   assert.equal(response.status, 201);
@@ -102,6 +121,55 @@ test('registration with pending email confirmation returns no session cookie', a
   assert.equal(response.body.email, 'teacher@example.test');
   assert.equal(response.headers['set-cookie'], undefined);
   assert.equal(dependencies.calls.identity.length, 0);
+  assert.equal(dependencies.calls.registration[0].details.departmentId, '507f1f77bcf86cd799439011');
+  assert.equal(dependencies.calls.signup[0].registrationIntentId, 'a'.repeat(64));
+  assert.deepEqual(dependencies.calls.registration[1], {
+    type: 'attach',
+    intentId: 'a'.repeat(64),
+    supabaseUserId: 'supabase-auth-uuid',
+  });
+});
+
+test('registration validation rejects invalid fields before calling Supabase', async () => {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/auth', authRoutes);
+
+  const response = await request(app).post('/api/auth/register').send({
+    name: 'T',
+    email: 'not-an-email',
+    password: 'short',
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(response.body.error.code, 'VALIDATION_ERROR');
+  assert.deepEqual(new Set(response.body.error.details.map(({ field }) => field)), new Set(['name', 'email', 'password']));
+});
+
+test('registration reports Mongo profile-link failures without issuing an auth cookie', async () => {
+  const dependencies = createDependencies({
+    authService: {
+      registerWithSupabase: async () => ({
+        user: confirmedAuthUser(),
+        session: { access_token: 'supabase-access-token', expires_in: 1800 },
+      }),
+      getRegistrationConfirmation: () => ({ confirmationRequired: false }),
+    },
+    identityService: {
+      resolveAuthenticatedUser: async () => { throw new Error('MongoDB unavailable'); },
+    },
+  });
+  const response = await request(createApp(dependencies)).post('/auth/register').send({
+    name: 'New Teacher',
+    email: 'new@example.test',
+    password: 'test-password-only',
+    departmentId: '507f1f77bcf86cd799439011',
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(response.body.error.code, 'PROFILE_LINK_FAILED');
+  assert.match(response.body.error.message, /Sign in again to retry/);
+  assert.equal(response.headers['set-cookie'], undefined);
 });
 
 test('password login without a Supabase session is rejected as unconfirmed', async () => {
@@ -146,6 +214,22 @@ test('protected profile validates Supabase token and returns the mapped Mongo pr
   assert.equal(response.status, 200);
   assert.equal(response.body.user.id, 'legacy-mongo-object-id');
   assert.equal(response.body.user.department, null);
+});
+
+test('authenticated profile returns the Mongo department reference after login', async () => {
+  const dependencies = createDependencies({
+    identityService: {
+      getMappedUser: async () => trustedMongoUser({
+        department: { toString: () => 'mongo-department-object-id' },
+      }),
+    },
+  });
+  const response = await request(createApp(dependencies))
+    .get('/auth/me')
+    .set('Cookie', 'facultyDeskAuth=supabase-access-token');
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.department, 'mongo-department-object-id');
 });
 
 test('invalid and unconfirmed Supabase sessions are rejected', async () => {

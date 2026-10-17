@@ -1,10 +1,17 @@
 const express = require('express');
 const { body, param, query } = require('express-validator');
-const { createDepartment, listDepartments, updateDepartmentStatus } = require('../controllers/academicController');
+const {
+  createDepartment,
+  listAvailableDepartments,
+  listDepartments,
+  updateDepartmentStatus,
+} = require('../controllers/academicController');
 const { authenticate, authorize } = require('../middleware/authMiddleware');
 const { validateRequest } = require('../middleware/validateRequest');
 
 const router = express.Router();
+
+router.get('/available', listAvailableDepartments);
 router.use(authenticate);
 
 router.get(

@@ -25,6 +25,7 @@ router.post(
   body('name').isString().trim().isLength({ min: 2, max: 100 }),
   body('email').isEmail().normalizeEmail().isLength({ max: 254 }),
   body('password').isString().isLength({ min: 8, max: 128 }),
+  body('departmentId').optional({ values: 'falsy' }).isMongoId(),
   validateRequest,
   register
 );

@@ -70,14 +70,39 @@ test('registration normalizes identity and preserves the email-confirmation pend
       name: ' Taylor Teacher ',
       email: ' TAYLOR@EXAMPLE.TEST ',
       password: 'test-password-only',
+      registrationIntentId: 'opaque-registration-token',
     });
     const requestBody = JSON.parse(captured.options.body);
 
     assert.equal(captured.url.pathname, '/auth/v1/signup');
     assert.equal(requestBody.email, 'taylor@example.test');
     assert.equal(requestBody.data.name, 'Taylor Teacher');
+    assert.equal(requestBody.data.facultyDeskRegistrationIntentId, 'opaque-registration-token');
     assert.equal(result.user.id, 'pending-auth-id');
     assert.equal(result.session, null);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('registration rejects Supabase duplicate-user responses instead of claiming confirmation was sent', async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async () => responseJson({
+    id: 'existing-auth-id',
+    email: 'teacher@example.test',
+    identities: [],
+  });
+
+  try {
+    await assert.rejects(
+      registerWithSupabase({
+        name: 'Existing Teacher',
+        email: 'teacher@example.test',
+        password: 'test-password-only',
+      }),
+      { code: 'user_already_exists' }
+    );
   } finally {
     global.fetch = originalFetch;
   }

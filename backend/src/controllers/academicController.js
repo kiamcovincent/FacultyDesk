@@ -18,6 +18,13 @@ const listDepartments = handleAsync(async (req, res) => {
   res.status(200).json(await academicService.getDepartments(req.query));
 });
 
+const listAvailableDepartments = handleAsync(async (req, res) => {
+  const { departments } = await academicService.getDepartments({ active: 'true', limit: 100 });
+  res.status(200).json({
+    departments: departments.map(({ _id, name, code }) => ({ _id, name, code })),
+  });
+});
+
 const createDepartment = handleAsync(async (req, res) => {
   const department = await academicService.createDepartment(req.body, req.user._id, req.ip);
   res.status(201).json({ department });
@@ -39,7 +46,7 @@ const listSubjects = handleAsync(async (req, res) => {
 });
 
 const createSubject = handleAsync(async (req, res) => {
-  const subject = await academicService.createSubject(req.body, req.user._id, req.ip);
+  const subject = await academicService.createSubject(req.body, req.user, req.ip);
   res.status(201).json({ subject });
 });
 
@@ -54,7 +61,7 @@ const listSchedules = handleAsync(async (req, res) => {
 });
 
 const createSchedule = handleAsync(async (req, res) => {
-  const schedule = await academicService.createSchedule(req.body, req.user._id, req.ip);
+  const schedule = await academicService.createSchedule(req.body, req.user, req.ip);
   res.status(201).json({ schedule });
 });
 
@@ -69,6 +76,7 @@ module.exports = {
   createSchedule,
   createSubject,
   listDepartments,
+  listAvailableDepartments,
   listSchedules,
   listSubjects,
   updateDepartmentStatus,

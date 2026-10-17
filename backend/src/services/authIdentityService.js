@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
+const Department = require('../models/Department');
+const RegistrationIntent = require('../models/RegistrationIntent');
 const User = require('../models/User');
 
 function identityError(statusCode, code, message) {
@@ -15,6 +17,8 @@ function isEmailConfirmed(authUser) {
 
 function createAuthIdentityService({
   UserModel = User,
+  RegistrationIntentModel = RegistrationIntent,
+  DepartmentModel = Department,
   bcryptModule = bcrypt,
   randomBytes = crypto.randomBytes,
 } = {}) {
@@ -37,6 +41,63 @@ function createAuthIdentityService({
 
   async function getMappedUser(authUserId) {
     return requireActive(await findBySupabaseId(authUserId));
+  }
+
+  async function resolveRegistrationIntent(authUser) {
+    const intentId = authUser.user_metadata?.facultyDeskRegistrationIntentId;
+    if (!intentId) return null;
+    if (!/^[a-f\d]{64}$/i.test(intentId)) {
+      throw identityError(409, 'REGISTRATION_INTENT_INVALID', 'This registration could not be linked safely. Contact an administrator.');
+    }
+
+    const intent = await RegistrationIntentModel.findById(intentId);
+    if (!intent || intent.status !== 'pending'
+      || intent.email !== authUser.email.trim().toLowerCase()
+      || (intent.supabaseUserId && intent.supabaseUserId !== authUser.id)) {
+      throw identityError(409, 'REGISTRATION_INTENT_INVALID', 'This registration could not be linked safely. Contact an administrator.');
+    }
+
+    const department = intent.department
+      ? await DepartmentModel.findOne({ _id: intent.department, active: true })
+      : null;
+    if (intent.department && !department) {
+      throw identityError(409, 'DEPARTMENT_UNAVAILABLE', 'The selected department is no longer active. Contact an administrator.');
+    }
+
+    intent.supabaseUserId = authUser.id;
+    try {
+      await intent.save();
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      const linkedIntent = await RegistrationIntentModel.findById(intentId);
+      if (linkedIntent?.supabaseUserId !== authUser.id) {
+        throw identityError(409, 'REGISTRATION_INTENT_CONFLICT', 'This registration could not be linked safely.');
+      }
+    }
+
+    try {
+      const user = await UserModel.create({
+        name: intent.name,
+        email: authUser.email.trim().toLowerCase(),
+        passwordHash: await bcryptModule.hash(randomBytes(32).toString('hex'), 12),
+        role: 'teacher',
+        status: 'active',
+        department: department?._id || null,
+        supabaseUserId: authUser.id,
+      });
+      intent.status = 'complete';
+      await intent.save();
+      return user;
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+      const concurrentlyLinked = await findBySupabaseId(authUser.id);
+      if (concurrentlyLinked) {
+        intent.status = 'complete';
+        await intent.save();
+        return requireActive(concurrentlyLinked);
+      }
+      throw identityError(409, 'ACCOUNT_LINK_CONFLICT', 'This account could not be linked safely.');
+    }
   }
 
   async function resolveAuthenticatedUser(authUser, password) {
@@ -86,6 +147,9 @@ function createAuthIdentityService({
 
       return legacyUser;
     }
+
+    const registrationUser = await resolveRegistrationIntent(authUser);
+    if (registrationUser) return requireActive(registrationUser);
 
     const name = authUser.user_metadata?.name?.trim();
     if (!name || name.length < 2 || name.length > 100) {

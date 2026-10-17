@@ -21,10 +21,10 @@ router.get(
 
 router.post(
   '/',
-  authorize('admin'),
+  authorize('admin', 'teacher'),
   body('name').isString().trim().isLength({ min: 2, max: 120 }),
   body('code').isString().trim().isLength({ min: 2, max: 20 }).matches(/^[a-zA-Z0-9-]+$/),
-  body('department').isMongoId(),
+  body('department').optional({ values: 'falsy' }).isMongoId(),
   body('teachers').optional().isArray({ max: 100 }),
   body('teachers.*').optional().isMongoId(),
   validateRequest,
