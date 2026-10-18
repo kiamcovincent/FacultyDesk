@@ -59,9 +59,10 @@ export default function TeacherWorkflowPage({ step }) {
   const [selectedSubjectId, setSelectedSubjectId] = useState(() => readProgress(user.id).subjectId || '');
   const [selectedScheduleId, setSelectedScheduleId] = useState(() => readProgress(user.id).scheduleId || '');
   const [date, setDate] = useState(() => readProgress(user.id).date || currentDateKey());
-  const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
+  const [subjectForm, setSubjectForm] = useState({ name: '', code: '', department: '' });
   const [scheduleForm, setScheduleForm] = useState({ className: '', dayOfWeek: '1', startTime: '09:00', endTime: '10:00', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' });
   const [studentForm, setStudentForm] = useState({ studentNumber: '', firstName: '', lastName: '' });
+  const [departments, setDepartments] = useState([]);
   const [description, setDescription] = useState('');
   const [attendanceStudents, setAttendanceStudents] = useState([]);
   const [loading, setLoading] = useState(step !== 'registration-confirmed');
@@ -93,7 +94,7 @@ export default function TeacherWorkflowPage({ step }) {
     let active = true;
     const requests = [];
     if (step === 'subject') {
-      requests.push(apiRequest('/subjects?limit=100'));
+      requests.push(apiRequest('/subjects?limit=100'), apiRequest('/departments?active=true&limit=100'));
     } else if (step === 'schedule') {
       requests.push(apiRequest('/subjects?limit=100'), apiRequest('/schedules?limit=100'));
     } else if (step === 'students' && progress.subjectId) {
@@ -108,6 +109,7 @@ export default function TeacherWorkflowPage({ step }) {
         setError('');
         if (step === 'subject') {
           setSubjects(results[0].subjects);
+          setDepartments(results[1].departments);
         }
         if (step === 'schedule') {
           setSubjects(results[0].subjects);
@@ -162,18 +164,22 @@ export default function TeacherWorkflowPage({ step }) {
     try {
       const result = await apiRequest('/subjects', {
         method: 'POST',
-        body: { name: subjectForm.name, code: subjectForm.code },
+        body: subjectForm,
       });
-      setSubjects((current) => [...current.filter((item) => item._id !== result.subject._id), result.subject]);
-      setSelectedSubjectId(result.subject._id);
+      const createdSubject = {
+        ...result.subject,
+        department: departments.find((item) => item._id === subjectForm.department) || null,
+      };
+      setSubjects((current) => [...current.filter((item) => item._id !== createdSubject._id), createdSubject]);
+      setSelectedSubjectId(createdSubject._id);
       saveProgress({
-        subjectId: result.subject._id,
+        subjectId: createdSubject._id,
         subjectConfirmed: true,
         scheduleId: '',
         scheduleConfirmed: false,
         studentsConfirmed: false,
       });
-      setSubjectForm({ name: '', code: '' });
+      setSubjectForm({ name: '', code: '', department: '' });
       goTo('/workflow/schedule');
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -242,14 +248,18 @@ export default function TeacherWorkflowPage({ step }) {
       });
       setStudentForm({ studentNumber: '', firstName: '', lastName: '' });
       setNotice(`${result.student.firstName} ${result.student.lastName} saved to ${subject?.name || 'the subject'}.`);
-      saveProgress({ studentsConfirmed: true });
       setRefresh((value) => value + 1);
-      goTo('/workflow/attendance');
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setBusy('');
     }
+  }
+
+  function confirmStudents() {
+    if (!students.length) return;
+    saveProgress({ studentsConfirmed: true });
+    goTo('/workflow/attendance');
   }
 
   function changeAttendance(studentId, status) {
@@ -337,7 +347,7 @@ export default function TeacherWorkflowPage({ step }) {
             <div className="data-panel__heading"><div><p className="eyebrow">EXISTING RECORDS</p><h3>Choose a subject</h3></div></div>
             {subjects.length ? (
               <>
-                <label className="field"><span>My subjects</span><select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}><option value="">Select a subject</option>{subjects.filter((item) => item.active).map((item) => <option value={item._id} key={item._id}>{item.name} ({item.code})</option>)}</select></label>
+                <label className="field"><span>My subjects</span><select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}><option value="">Select a subject</option>{subjects.filter((item) => item.active).map((item) => <option value={item._id} key={item._id}>{item.name} ({item.code}) · {item.department?.name || 'No department'}</option>)}</select></label>
                 <Button onClick={confirmSubject} disabled={!selectedSubjectId}>Confirm Subject</Button>
               </>
             ) : <EmptyState title="No subjects yet" message="Create a subject, then confirm it to continue." />}
@@ -347,7 +357,9 @@ export default function TeacherWorkflowPage({ step }) {
             <div className="data-panel__heading"><div><p className="eyebrow">NEW RECORD</p><h3>Add a subject</h3></div><BookOpenCheck size={18} aria-hidden="true" /></div>
             <label className="field"><span>Subject name</span><input required minLength={2} maxLength={120} value={subjectForm.name} onChange={(event) => setSubjectForm({ ...subjectForm, name: event.target.value })} /></label>
             <label className="field"><span>Subject code</span><input required minLength={2} maxLength={20} pattern="[A-Za-z0-9-]+" value={subjectForm.code} onChange={(event) => setSubjectForm({ ...subjectForm, code: event.target.value.toUpperCase() })} /></label>
-            <Button type="submit" loading={busy === 'subject'}>Add Subject</Button>
+            <label className="field"><span>Department</span><select required value={subjectForm.department} onChange={(event) => setSubjectForm({ ...subjectForm, department: event.target.value })}><option value="">Select department</option>{departments.map((department) => <option value={department._id} key={department._id}>{department.name} ({department.code})</option>)}</select></label>
+            {!departments.length && <p className="workflow-help" role="status">No departments are available. Ask an administrator to add a department before creating a subject.</p>}
+            <Button type="submit" loading={busy === 'subject'} disabled={!departments.length}>Add Subject</Button>
           </form>
         </div>
       )}
@@ -356,10 +368,10 @@ export default function TeacherWorkflowPage({ step }) {
         <div className="workflow-grid">
           <section className="workflow-panel">
             <div className="data-panel__heading"><div><p className="eyebrow">CONFIRMED SUBJECT</p><h3>{subject?.name || 'Selected subject'}</h3></div></div>
-            <p className="workflow-help">{subject?.code}</p>
+            <p className="workflow-help">{subject?.code} · {subject?.department?.name || 'No department assigned'}</p>
             {availableSchedules.length > 0 && (
               <>
-                <label className="field"><span>Existing schedule</span><select value={selectedScheduleId} onChange={(event) => setSelectedScheduleId(event.target.value)}><option value="">Select a class schedule</option>{availableSchedules.map((item) => <option value={item._id} key={item._id}>{item.className} · {weekdays[item.dayOfWeek]} · {item.startTime}–{item.endTime}</option>)}</select></label>
+                <label className="field"><span>Existing schedule</span><select value={selectedScheduleId} onChange={(event) => setSelectedScheduleId(event.target.value)}><option value="">Select a class schedule</option>{availableSchedules.map((item) => <option value={item._id} key={item._id}>{item.className} · {item.subject?.department?.name || 'No department'} · {weekdays[item.dayOfWeek]} · {item.startTime}–{item.endTime}</option>)}</select></label>
                 <Button variant="secondary" onClick={confirmSchedule} disabled={!selectedScheduleId}>Confirm Schedule</Button>
               </>
             )}
@@ -388,7 +400,7 @@ export default function TeacherWorkflowPage({ step }) {
 
           <section className="workflow-panel">
             <div className="data-panel__heading"><div><p className="eyebrow">SAVED ROSTER</p><h3>{students.length} students</h3></div></div>
-            {students.length ? <div className="workflow-roster">{students.map((item) => <div className="workflow-roster__row" key={item._id}><span className="workflow-roster__initial">{item.firstName[0]}{item.lastName[0]}</span><span><strong>{item.firstName} {item.lastName}</strong><small>{item.studentNumber}</small></span></div>)}</div> : <EmptyState title="No students in this subject" message="Add and save at least one student before confirming the roster." />}
+            {students.length ? <><div className="workflow-roster">{students.map((item) => <div className="workflow-roster__row" key={item._id}><span className="workflow-roster__initial">{item.firstName[0]}{item.lastName[0]}</span><span><strong>{item.firstName} {item.lastName}</strong><small>{item.studentNumber}</small></span></div>)}</div><Button onClick={confirmStudents}>Continue to attendance <ArrowRight size={17} aria-hidden="true" /></Button></> : <EmptyState title="No students in this subject" message="Add and save at least one student before continuing to attendance." />}
           </section>
         </div>
       )}
@@ -396,7 +408,7 @@ export default function TeacherWorkflowPage({ step }) {
       {step === 'attendance' && (
         <section className="workflow-panel workflow-attendance">
           <div className="workflow-attendance__toolbar">
-              <label className="field"><span>Class schedule</span><select value={selectedScheduleId} onChange={(event) => { setLoading(true); setAttendanceSaved(false); setSelectedScheduleId(event.target.value); }}><option value="">Select a schedule</option>{availableSchedules.map((item) => <option value={item._id} key={item._id}>{item.className} · {item.subject?.name} · {weekdays[item.dayOfWeek]}</option>)}</select></label>
+              <label className="field"><span>Class schedule</span><select value={selectedScheduleId} onChange={(event) => { setLoading(true); setAttendanceSaved(false); setSelectedScheduleId(event.target.value); }}><option value="">Select a schedule</option>{availableSchedules.map((item) => <option value={item._id} key={item._id}>{item.className} · {item.subject?.department?.name || 'No department'} · {item.subject?.name} · {weekdays[item.dayOfWeek]}</option>)}</select></label>
               <label className="field"><span>Attendance date</span><input type="date" required value={date} onChange={(event) => { setLoading(true); setAttendanceSaved(false); setDate(event.target.value); saveProgress({ date: event.target.value }); }} /></label>
           </div>
           <label className="field workflow-description"><span>Attendance Description</span><textarea disabled={!selectedScheduleId} maxLength={500} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Add a note about this class session" /></label>

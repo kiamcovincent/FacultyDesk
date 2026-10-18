@@ -1,29 +1,16 @@
 import { ArrowRight, BookOpenCheck, MailCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import Button from '../components/Button.jsx';
 import { useAuth } from '../hooks/useAuth.js';
-import { apiRequest } from '../services/api.js';
 
 export default function RegisterPage() {
   const { user, status, register } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', email: '', password: '', departmentId: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [departments, setDepartments] = useState([]);
-  const [departmentsLoading, setDepartmentsLoading] = useState(true);
-  const [departmentsError, setDepartmentsError] = useState('');
   const [confirmationEmail, setConfirmationEmail] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    apiRequest('/departments/available')
-      .then((data) => { if (active) setDepartments(data.departments); })
-      .catch((requestError) => { if (active) setDepartmentsError(requestError.message); })
-      .finally(() => { if (active) setDepartmentsLoading(false); });
-    return () => { active = false; };
-  }, []);
 
   if (status === 'loading') return <main className="auth-loading" role="status">Checking your session</main>;
   if (user) return <Navigate to="/dashboard" replace />;
@@ -37,7 +24,7 @@ export default function RegisterPage() {
       const outcome = await register(form);
       if (outcome.pendingConfirmation) {
         setConfirmationEmail(outcome.email);
-        setForm({ name: '', email: '', password: '', departmentId: '' });
+        setForm({ name: '', email: '', password: '' });
         return;
       }
 
@@ -104,25 +91,6 @@ export default function RegisterPage() {
                     onChange={(event) => setForm({ ...form, email: event.target.value })}
                   />
                 </label>
-                <label className="field">
-                  <span>Department <small>Optional</small></span>
-                  <select
-                    disabled={departmentsLoading || departments.length === 0}
-                    value={form.departmentId}
-                    onChange={(event) => setForm({ ...form, departmentId: event.target.value })}
-                  >
-                    <option value="">{departmentsLoading ? 'Loading departments' : 'No selection'}</option>
-                    {departments.map((department) => (
-                      <option value={department._id} key={department._id}>
-                        {department.name} ({department.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {departmentsError && <p className="form-intro" role="status">Department options are unavailable. You can continue without selecting one.</p>}
-                {!departmentsLoading && !departmentsError && departments.length === 0 && (
-                  <p className="form-intro" role="status">No department options are available. You can continue without one.</p>
-                )}
                 <label className="field">
                   <span>Password <small>At least 8 characters</small></span>
                   <input
